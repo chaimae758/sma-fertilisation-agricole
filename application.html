@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="fr"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fertilisation optimisée par agents autonomes</title>
+<style>
+:root{--bg:#EDF0EA;--sf:#F8FAF6;--ink:#13302A;--mut:#5B6B64;--ln:#CBD3CB;--a:#1F7A8C;--r:#A8433A;--t:#9AA8A0}
+@media(prefers-color-scheme:dark){:root{--bg:#0F1D19;--sf:#16282F;--ink:#E3ECE6;--mut:#93A79D;--ln:#2A3F3A;--a:#5CC1D4;--r:#E07A6E;--t:#5E746B}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,sans-serif}
+main{max-width:1000px;margin:0 auto;padding:26px 18px 48px}
+h1{font-size:clamp(26px,5vw,40px);line-height:1.1;margin:0 0 8px}h2{font-size:18px;margin:0 0 8px}
+.lead{color:var(--mut);margin:0 0 20px;max-width:70ch}
+.bar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px}
+button{font:600 15px system-ui;border:0;border-radius:6px;padding:10px 16px;background:var(--ink);color:var(--bg);cursor:pointer}
+button.sec{background:transparent;color:var(--ink);border:1.5px solid var(--ink)}button:disabled{opacity:.4;cursor:default}
+button:focus-visible{outline:3px solid var(--a);outline-offset:2px}
+.kpi{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:16px}
+.kpi div{background:var(--sf);border:1px solid var(--ln);border-radius:10px;padding:10px 16px;min-width:150px}
+.kpi b{display:block;font-size:26px}.kpi span{color:var(--mut);font-size:13px}
+.panel{background:var(--sf);border:1px solid var(--ln);border-radius:10px;padding:16px;margin-bottom:16px}
+canvas{width:100%;height:300px;display:block}
+.leg{display:flex;gap:18px;flex-wrap:wrap;font-size:13px;color:var(--mut);margin-top:8px}
+.leg i{display:inline-block;width:22px;height:0;border-top:3px solid;vertical-align:middle;margin-right:6px}
+.scroll{overflow-x:auto}table{border-collapse:collapse;width:100%;font-size:14px;min-width:560px}
+th,td{text-align:left;padding:6px 10px;border-bottom:1px solid var(--ln)}th{color:var(--mut)}
+td.ch{background:color-mix(in srgb,var(--a) 22%,transparent);transition:background .6s}
+.err{color:var(--r);font-weight:600}
+.pos{color:var(--a);font-weight:600}.neg{color:var(--r);font-weight:600}
+nav{display:flex;gap:8px;margin:0 0 22px;border-bottom:2px solid var(--ln)}
+.tab{background:transparent;color:var(--mut);border:0;border-radius:6px 6px 0 0;padding:10px 18px;font:600 15px system-ui;cursor:pointer;margin-bottom:-2px;border-bottom:3px solid transparent}
+.tab[aria-selected=true]{color:var(--ink);border-bottom-color:var(--a)}
+section[hidden]{display:none}
+</style></head><body><main>
+<h1>Fertilisation optimisée par agents autonomes</h1>
+<p class="lead">Système multi-agents (Double Q-learning) qui apprend à recommander des doses de phosphore et de potassium adaptées à chaque type de sol marocain.</p>
+<nav role="tablist"><button class="tab" role="tab" aria-selected="true" data-t="live">Apprentissage en direct</button><button class="tab" role="tab" aria-selected="false" data-t="res">Résultats et robustesse</button></nav>
+<section id="live">
+<p class="lead">Chaque groupe de sols de vos cartes a son agent. Au début, il essaie des doses au hasard. Au fil des épisodes, il apprend. La ligne bleue mesure sa performance sur des parcelles qu'il n'a jamais vues pendant l'entraînement.</p>
+<div id="a_msg" class="err"></div>
+<div class="bar"><button id="a_go">Lancer l'apprentissage</button><button id="a_stop" class="sec" disabled>Pause</button><button id="a_rst" class="sec">Recommencer à zéro</button></div>
+<div class="kpi"><div><b id="a_k1">0</b><span>épisodes joués</span></div><div><b id="a_k2">100 %</b><span>exploration (essais au hasard)</span></div><div><b id="a_k3">–</b><span>score sur zone non entraînée</span></div></div>
+<div class="panel"><h2>Score en fonction de l'apprentissage</h2><canvas id="a_cv"></canvas>
+<div class="leg"><span><i style="border-color:var(--a)"></i>Zone non entraînée (agents sans exploration)</span><span><i style="border-color:var(--t)"></i>Entraînement (avec exploration)</span><span><i style="border-color:var(--mut);border-top-style:dashed"></i>Aucun engrais</span><span><i style="border-color:var(--r);border-top-style:dashed"></i>Dose fixe 40/40</span></div></div>
+<div class="panel"><h2>Ce que chaque agent recommande maintenant (P₂O₅ / K₂O en kg/ha)</h2>
+<p class="lead" style="margin-bottom:8px">Les cases se colorent quand la recommandation change. Au départ, tout est à 0 / 0. Les agents ne savent encore rien.</p>
+<div class="scroll"><table id="a_pol"></table></div></div>
+
+</section>
+<section id="res" hidden>
+<p class="lead" id="r_intro"></p>
+<div class="panel"><h2>Courbe d'apprentissage (récompense moyenne)</h2><canvas id="r_cv"></canvas></div>
+<div class="panel"><h2>Test sur la zone non entraînée</h2><div class="scroll"><table id="r_test"></table></div></div>
+<div class="panel"><h2>Doses recommandées par groupe de sols (P₂O₅ / K₂O en kg/ha)</h2><div class="scroll"><table id="r_pol"></table></div></div>
+<div class="panel" id="r_rob" style="display:none"><h2>Tests de robustesse (moyenne ± écart-type)</h2>
+<p class="lead" style="margin-bottom:8px" id="r_robtxt"></p><div class="scroll"><table id="r_robt"></table></div></div>
+
+</section>
+</main>
+<script src="donnees.js"></script><script src="resultats.js"></script><script src="robustesse.js"></script>
+<script>(function(){
+const $=i=>document.getElementById(i);
+if(!window.DATA){$('a_msg').textContent="Fichier donnees.js introuvable. Lancez d'abord python main.py dans ce dossier."}
+else{
+const D=DATA,DO=[0,20,40,60],NA=16,NB=5,SE=8,EPS=4000,PO=D.P_OPT,KO=D.K_OPT;
+const rnd=Math.random,gauss=()=>(rnd()+rnd()+rnd()-1.5)*1.15;
+const bin=(v,r)=>{const x=v/r;return x<.5?0:x<.8?1:x<1.2?2:x<1.6?3:4};
+const mk=()=>new Float32Array(NB*NB*NA),ix=(p,k)=>(p*NB+k)*NA;
+const ag=D.groupes.map(g=>({g,A:mk(),B:mk(),last:[]}));
+function step(P,K,a,pc){
+ const dP=DO[a>>2],dK=DO[a&3],ph=pc[2],cl=pc[3],rn=pc[4],wf=Math.min(rn/500,1),fix=.35+.004*cl+.08*Math.max(ph-7,0),sP=PO/25,sK=KO/150;
+ const P2=Math.max(.5,P+(dP*.1*(1-fix)-2.5*wf+gauss()*.5)*sP);
+ const K2=Math.max(5,K+(dK*.5*(1-.3*cl/50)-8*wf+gauss()*2)*sK-.002*K*rn/600);
+ const d=(p,k)=>Math.abs(p/PO-1)+Math.abs(k/KO-1),y=wf*Math.sqrt(Math.min(P2/PO,1))*Math.sqrt(Math.min(K2/KO,1));
+ let r=5*y-.03*(dP+dK);
+ if(d(P2,K2)<d(P,K)-.02)r+=10;
+ if((dP>0&&P>1.2*PO)||(dK>0&&K>1.2*KO))r-=5;
+ if(P2>2*PO||K2>2*KO)r-=10;
+ return[P2,K2,r];
+}
+function argmax(g,s){let b=0,v=-1e9;for(let a=0;a<NA;a++){const x=g.A[s+a]+g.B[s+a];if(x>v){v=x;b=a}}return b}
+function play(g,pc,eps,learn,fixed){
+ let P=pc[0],K=pc[1],tot=0;
+ for(let t=0;t<SE;t++){
+  const s=ix(bin(P,PO),bin(K,KO));
+  const a=fixed!=null?fixed:(rnd()<eps?(rnd()*NA|0):argmax(g,s));
+  const[P2,K2,r]=step(P,K,a,pc);
+  if(learn){const[X,Y]=rnd()<.5?[g.A,g.B]:[g.B,g.A],s2=ix(bin(P2,PO),bin(K2,KO));
+   let b=0,v=-1e9;for(let i=0;i<NA;i++)if(X[s2+i]>v){v=X[s2+i];b=i}
+   X[s+a]+=.15*(r+.9*Y[s2+b]-X[s+a])}
+  tot+=r;P=P2;K=K2}
+ return tot;
+}
+const evalTest=f=>{let s=0;D.test.forEach(t=>s+=play(ag[t.c],t.p,0,false,f));return s/D.test.length};
+const base0=evalTest(0),base40=evalTest(10);
+let ep=0,on=false,trc=[],tec=[];
+function share(){for(const k of["A","B"]){const m=mk();ag.forEach(g=>g[k].forEach((v,i)=>m[i]+=v/ag.length));ag.forEach(g=>g[k].forEach((v,i)=>g[k][i]=.8*v+.2*m[i]))}}
+function tick(){
+ if(!on)return;
+ for(let n=0;n<20&&ep<EPS;n++,ep++){
+  const eps=Math.max(.05,1-ep/(.7*EPS));let s=0;
+  ag.forEach(g=>s+=play(g,g.g.parcelles[rnd()*g.g.parcelles.length|0],eps,true));trc.push(s/ag.length);
+  if(ep%100==99)share();
+  if(ep%40==39)tec.push([ep,evalTest(null)])}
+ const eps=Math.max(.05,1-ep/(.7*EPS));
+ $('a_k1').textContent=ep;$('a_k2').textContent=Math.round(eps*100)+" %";
+ if(tec.length)$('a_k3').textContent=tec[tec.length-1][1].toFixed(1);
+ draw();table();
+ if(ep>=EPS){on=false;ui(false);return}
+ requestAnimationFrame(tick);
+}
+function ui(r){$('a_go').disabled=r;$('a_stop').disabled=!r;$('a_go').textContent=ep>0&&ep<EPS?'Reprendre':"Lancer l'apprentissage"}
+const css=v=>getComputedStyle(document.documentElement).getPropertyValue(v);
+function draw(){
+ const c=$('a_cv'),d=devicePixelRatio||1,w=c.clientWidth,h=c.clientHeight;c.width=w*d;c.height=h*d;
+ const x=c.getContext('2d');x.scale(d,d);x.clearRect(0,0,w,h);
+ const sm=trc.map((_,i)=>{const a=Math.max(0,i-39);let s=0;for(let j=a;j<=i;j++)s+=trc[j];return s/(i-a+1)});
+ const all=[base0,base40,...sm,...tec.map(t=>t[1])],lo=Math.min(...all,0)-5,hi=Math.max(...all,50)+5;
+ const X=i=>38+i/EPS*(w-50),Y=v=>h-22-(v-lo)/(hi-lo)*(h-34);
+ x.font='12px system-ui';x.fillStyle=css('--mut');x.strokeStyle=css('--ln');x.lineWidth=1;
+ for(let i=0;i<=4;i++){const v=lo+(hi-lo)*i/4;x.beginPath();x.moveTo(38,Y(v));x.lineTo(w-8,Y(v));x.stroke();x.fillText(Math.round(v),2,Y(v)+4)}
+ x.fillText('épisodes',w-60,h-6);
+ const line=(pts,col,wd,dash)=>{x.strokeStyle=col;x.lineWidth=wd;x.setLineDash(dash||[]);x.beginPath();pts.forEach((p,i)=>i?x.lineTo(p[0],p[1]):x.moveTo(p[0],p[1]));x.stroke();x.setLineDash([])};
+ line([[X(0),Y(base0)],[X(EPS),Y(base0)]],css('--mut'),1.5,[6,5]);
+ line([[X(0),Y(base40)],[X(EPS),Y(base40)]],css('--r'),1.5,[6,5]);
+ if(sm.length>1)line(sm.map((v,i)=>[X(i),Y(v)]),css('--t'),2);
+ if(tec.length>1)line(tec.map(t=>[X(t[0]),Y(t[1])]),css('--a'),3);
+}
+const ST=[["P et K bas",0,0],["P bas, K correct",0,2],["P correct, K bas",2,0],["P et K corrects",2,2]];
+function table(){
+ let h='<tr><th>Groupe</th><th>Parcelles</th>'+ST.map(s=>`<th>${s[0]}</th>`).join('')+'</tr>';
+ ag.forEach(g=>{h+=`<tr><td>${g.g.id}</td><td>${g.g.n}</td>`;
+  ST.forEach((s,j)=>{const a=argmax(g,ix(s[1],s[2])),t=`${DO[a>>2]} / ${DO[a&3]}`,ch=g.last[j]!==undefined&&g.last[j]!==t;g.last[j]=t;h+=`<td${ch?' class="ch"':''}>${t}</td>`});
+  h+='</tr>'});
+ $('a_pol').innerHTML=h;
+}
+$('a_go').onclick=()=>{on=true;ui(true);tick()};
+$('a_stop').onclick=()=>{on=false;ui(false)};
+$('a_rst').onclick=()=>{on=false;ag.forEach(g=>{g.A.fill(0);g.B.fill(0);g.last=[]});ep=0;trc=[];tec=[];$('a_k1').textContent=0;$('a_k2').textContent='100 %';$('a_k3').textContent='–';ui(false);draw();table()};
+table();draw();addEventListener('resize',draw);
+}
+})();</script>
+<script>(function(){
+const R=window.RESULTS,$=id=>document.getElementById(id);
+if(!R){$('r_intro').textContent="Fichier resultats.js introuvable : lancez d'abord python fertilisation_sma.py dans ce dossier."}
+else{
+$('r_intro').textContent=`Zone de test : ${R.n_test} parcelles jamais vues, dont ${Math.round(R.part_deficientes*100)} % sont déficientes en P ou en K.`;
+const cls=v=>v>0?'pos':'neg',f=v=>v==null?'–':v.toFixed(1);
+$('r_test').innerHTML='<tr><th>Stratégie</th><th>Toutes les parcelles</th><th>Parcelles déficientes</th></tr>'+
+Object.keys(R.test).map(k=>`<tr><td>${k}</td><td class="${cls(R.test[k])}">${f(R.test[k])}</td><td class="${cls(R.test_deficientes[k])}">${f(R.test_deficientes[k])}</td></tr>`).join('');
+const cols=Object.keys(R.politiques[0]).filter(k=>k!=='groupe'&&k!=='parcelles');
+$('r_pol').innerHTML='<tr><th>Groupe</th><th>Parcelles</th>'+cols.map(c=>`<th>${c}</th>`).join('')+'</tr>'+
+R.politiques.map(r=>`<tr><td>${r.groupe}</td><td>${r.parcelles}</td>`+cols.map(c=>`<td>${r[c][0]} / ${r[c][1]}</td>`).join('')+'</tr>').join('');
+function draw(){
+ const c=$('r_cv'),d=devicePixelRatio||1,w=c.clientWidth,h=c.clientHeight;c.width=w*d;c.height=h*d;
+ const x=c.getContext('2d');x.scale(d,d);const s=getComputedStyle(document.documentElement),y=R.courbe;
+ const lo=Math.min(0,...y),hi=Math.max(...y),X=i=>34+i/(y.length-1)*(w-44),Y=v=>h-18-(v-lo)/(hi-lo||1)*(h-32);
+ x.strokeStyle=s.getPropertyValue('--ln');x.fillStyle=s.getPropertyValue('--mut');x.font='12px sans-serif';
+ [lo,hi].forEach(v=>{x.beginPath();x.moveTo(34,Y(v));x.lineTo(w-10,Y(v));x.stroke();x.fillText(Math.round(v),0,Y(v)+4)});
+ x.strokeStyle=s.getPropertyValue('--a');x.lineWidth=2.5;x.beginPath();y.forEach((v,i)=>i?x.lineTo(X(i),Y(v)):x.moveTo(X(i),Y(v)));x.stroke();
+}
+draw();addEventListener('resize',draw);
+const B=window.ROBUSTESSE;
+if(B){const f=v=>v[0].toFixed(1)+' ± '+v[1].toFixed(1),ok=b=>b?'<span class="pos">oui</span>':'<span class="neg">non</span>';
+ const row=(n,r)=>`<tr><td>${n}</td><td class="pos">${f(r.sma)}</td><td>${f(r.aucun)}</td><td>${f(r.fixe)}</td><td>${ok(r.sma_gagne_toujours)}</td></tr>`;
+ $('r_rob').style.display='block';
+ $('r_robtxt').textContent=`Dernière colonne : l'agent bat-il les deux références à chaque exécution ? ${B.graines.n} graines pour la ligne de base, 3 pour les autres seuils. Pour la sensibilité, les agents sont entraînés avec les règles d'origine puis testés dans un simulateur modifié.`;
+ $('r_robt').innerHTML='<tr><th>Test</th><th>Agents SMA</th><th>Aucun engrais</th><th>Dose fixe 40/40</th><th>SMA gagne toujours</th></tr>'+
+ row(B.graines.n+' graines (seuil 60e perc.)',B.graines)+B.seuils.map(r=>row('Seuil '+r.percentile+'e percentile',r)).join('')+B.sensibilite.map(r=>row(r.nom,r)).join('');}
+}
+})();</script>
+<script>
+document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{
+ document.querySelectorAll('.tab').forEach(x=>x.setAttribute('aria-selected',x===b));
+ ['live','res'].forEach(i=>document.getElementById(i).hidden=(i!==b.dataset.t));
+ window.dispatchEvent(new Event('resize'));});
+</script></body></html>
